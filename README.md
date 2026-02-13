@@ -35,41 +35,29 @@
 Структура репозитория организована следующим образом:
 
 ```text
-learn-2-rank/
+ltr_inference/
 ├── configs/             # Конфигурационные файлы (Hydra/YAML)
 │   └── base.yaml        # Основной конфиг обучения
-├── data/                # Данные (raw, processed)
-│   └── ml-1m/           # Датасет MovieLens
+├── data/                # Данные (raw, processed) ← ПУСТО
+├── embeddings/          # Матрица векторов для юзеров, фильмов и маппинги
 ├── models/              # Сохраненные веса (.cbm, .onnx)
 ├── src/                 # Исходный код
+│   ├── __init__.py
 │   ├── config.py        # Pydantic схемы конфигов
-│   ├── dataset.py       # Логика LTRDataset и загрузки Pool
-│   └── utils.py         # Вспомогательные функции
-├── notebooks/           # EDA и эксперименты
-├── train.py             # Скрипт обучения модели
-├── app.py               # Gradio демо-приложение
-└── requirements.txt     # Зависимости
+│   ├── dataset.py       # LTRDataset и загрузки Pool
+│   └── train.py         # ← Основной скрипт обучения
+├── demo/                # Демо-приложения
+│   └── app.py           # Gradio демо-приложение
+├── pyproject.toml       # Poetry зависимости (вместо requirements.txt)
+└── README.md
 
 ## 🚀 Запуск
 
-### 1. Установка зависимостей
+### 1. Подготовка данных
 
-Рекомендуется использовать виртуальное окружение:
+Скачайте MovieLens 1M и распакуйте в папку `data/`.
 
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
-
-pip install -r requirements.txt
-
-```
-
-### 2. Подготовка данных
-
-Скачайте MovieLens 1M и распакуйте в папку `data/ml-1m`.
-
-### 3. Обучение модели
+### 2. Обучение модели
 
 Запуск пайплайна обучения (настройки берутся из `configs/base.yaml`):
 
@@ -79,15 +67,6 @@ python -m src.train
 ```
 
 *Скрипт автоматически сохранит модель в `models/ranker.cbm` и выведет метрики.*
-
-### 4. Экспорт в ONNX (Опционально)
-
-Если экспорт не включен в `train.py`, используйте утилиту конвертации:
-
-```bash
-python -m scripts.convert_to_onnx.py
-
-```
 
 ## 📊 Метрики и Результаты
 
