@@ -11,12 +11,12 @@ features:
   train_ratio: 0.8
 
 catboost:
-  iterations: 100
+  iterations: 5000
   learning_rate: 0.1
   depth: 6
   loss_function: "YetiRank" # "YetiRank:max_pairs=100"
   task_type: "CPU" # Или GPU
-  verbose: 1
+  verbose: 100
   
 paths:
   train_data: "data/train.parquet"
