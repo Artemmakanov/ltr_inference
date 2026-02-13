@@ -34,18 +34,26 @@ model = CatBoostRanker(
     loss_function=cfg.catboost.loss_function,
     task_type=cfg.catboost.task_type,
     verbose=cfg.catboost.verbose,
-    # Важно для GPU и больших датасетов:
-    # early_stopping_rounds=100, 
+    # Добавляем метрики для мониторинга. 
+    # В CatBoost для бинарных целей RecallAt:top=K эквивалентен Hit@K
+    custom_metric=['RecallAt:top=5', 'PFound', 'NDCG:top=5'],
+    eval_metric='NDCG:top=5' # Используем как основную для Early Stopping
 )
 
-# 4. Обучение
-logger.info("Starting training...")
 model.fit(
     train_pool,
     eval_set=test_pool,
-    plot=False, # Plot=True работает только в ноутбуках
+    plot=False,
     use_best_model=True
 )
+
+# 5. Извлечение Hit@5 (RecallAt:top=5)
+final_metrics = model.get_best_score()
+
+# Структура: {'validation': {'RecallAt:top=5': 0.123, 'NDCG:top=5': 0.456}}
+hit5 = final_metrics['validation']['RecallAt:top=5']
+
+logger.success(f"Final Hit@5 (via RecallAt) on test pool: {hit5:.4f}")
 
 # 5. Сохранение
 output_path = cfg.paths.model_output

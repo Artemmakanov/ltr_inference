@@ -37,8 +37,6 @@
 * *Logic:* Пересчет скора для каждого кандидата с учетом сложных фичей.
 * *Model:* **CatBoostRanker (YetiRank)**
 
-
-
 ## 4. Data Pipeline & Features
 
 ### 4.1 Dataset
@@ -84,32 +82,69 @@
 * Векторизация подготовки батча через Polars/Pandas (без циклов Python).
 
 
+## 7. Результаты обучения и артефакты
 
-## 7. Implementation Plan (Sprint)
+В этом разделе фиксируются базовые показатели модели, обученной на MovieLens 1M.
 
-### Day 1: Training Pipeline (Offline)
+### 7.1 Offline Quality (Метрики качества)
 
-* [x] Setup Repo Structure (`src/`, `configs/`).
-* [x] ETL pipeline on Polars (Load -> Clean -> Split).
-* [x] `CatBoostRanker` Training with CPU.
-* [ ] Export artifacts: `ranker.cbm`, `user_embeddings.npy`, `item_embeddings.npy`.
+* **HIT@5:** `0.2204` (Доля случаев, когда релевантный фильм попал в топ-5 рекомендаций).
+* **Время обучения (CPU):** `201 сек` (CatBoost YetiRank, 1M транзакций, глубина 6).
 
-### Day 2: Infrastructure & Retrieval
+### 7.2 Характеристики артефактов
 
-* [ ] Docker Compose setup (Redis, App).
-* [ ] Feature Store ingestion script (Parquet -> Redis).
-* [ ] Candidate Generation stub (Faiss or Genre-based heuristic).
-* [ ] FastAPI skeleton.
+| Артефакт | Формат | Размер | Описание |
+| --- | --- | --- | --- |
+| **Ranking Model** | `.cbm` / `.onnx` | ~20 MB | Веса градиентного бустинга |
+| **User Embeddings** | `.npy` | ~15 MB | 6040 пользователей × 64 dim |
+| **Item Embeddings** | `.npy` | ~2 MB | 3900 фильмов × 64 dim |
 
-### Day 3: Serving & Optimization
+### 7.3 Скорость работы Retrieval (Поиск кандидатов)
 
-* [ ] Integration: Retrieval + Feature Lookup + Model.
-* [ ] Optimization: Convert to ONNX.
-* [ ] Benchmark: Locust load testing (Latency measurement).
-* [ ] Gradio UI Demo.
+* **Получение эмбеддинга (User Lookup):** `` (из кэша или In-memory).
+* **Поиск ТОП-100 кандидатов (Annoy):** `` (на CPU, Annoy).
+* **Итого Retrieval Latency:** ``.
 
-## 8. Risks & Non-Goals
+---
 
-* **Out of Scope:** Real-time updates (обучение на новых кликах мгновенно). Модель обновляется раз в сутки (Batch Retraining).
-* **Risk:** Холодный старт (новые юзеры). *Mitigation:* Фолбэк на Top-Popular.
-* **Risk:** Сложность ONNX конвертации для категориальных фичей. *Mitigation:* Если ONNX упадет, используем нативный C++ инференс CatBoost.
+## 8. Отчет по экспериментам оптимизации инференса
+
+Этот раздел предназначен для фиксации результатов бенчмарков. Основная цель — уложиться в **P95 < 50ms** для полного цикла (Retrieval + Feature Lookup + Scoring).
+
+### 8.1 Сравнение Latency (Batch: 100 кандидатов)
+<!-- 
+| Метод инференса | P50 (ms) | P95 (ms) | RPS | Комментарий |
+| --- | --- | --- | --- | --- |
+| **Native CatBoost (.predict)** |  |  |  | Высокий overhead Python-обертки |
+| **CatBoost + ONNX Runtime** |  |  |  | Оптимизированный граф вычислений |
+| **Redis MGET (Feature Lookup)** |  |  |  | Время на десериализацию фичей |
+| **End-to-End Pipeline** |  |  |  | Полный путь запроса | -->
+
+### 8.2 Выводы по оптимизации
+
+<!-- * **Векторизация vs Циклы:** Использование `Polars` или `NumPy` для формирования входной матрицы вместо Python `dict` сократило Latency на [X]%.
+* **Сжатие данных:** Использование `MessagePack` вместо `JSON` для хранения фичей в Redis уменьшило сетевой трафик и время парсинга на [Y]%.
+* **ONNX vs Native:** Переход на ONNX позволил/не позволил (нужное подчеркнуть) выиграть в стабильности задержек (снижение jitter). -->
+
+---
+
+## 9. Реализация (План действий)
+
+### День 1: Оффлайн-часть (Ready)
+
+* [x] Подготовка данных (Polars).
+* [x] Обучение CatBoostRanker (YetiRank).
+* [x] Экспорт весов и эмбеддингов.
+
+### День 2: Инфраструктура и Retrieval (In Progress)
+
+* [ ] Поднятие Redis и наполнение фичами (User/Item).
+* [ ] Реализация FAISS-сервиса для отбора кандидатов.
+* [ ] Написание FastAPI-эндпоинта `/recommend`.
+
+### День 3: Оптимизация и Деплой
+
+* [ ] Конвертация модели в ONNX.
+* [ ] Проведение нагрузочного тестирования (Locust).
+* [ ] Подготовка финального отчета в Gradio.
+

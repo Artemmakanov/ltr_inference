@@ -22,13 +22,15 @@ class ModelService:
         # Для демо загрузим словарь: MovieID -> {Genres: ..., Title: ...}
         
         # Загружаем сырые данные для маппинга
-        movies_df = pl.read_csv(
-            "data/movies.dat", 
-            separator=":", 
-            has_header=False, 
-            new_columns=["MovieID", "Title", "Genres"], 
-            truncate_ragged_lines=True
+        movies_df = pd.read_csv(
+            "data/movies.dat",
+            sep="::",
+            engine="python",
+            encoding="iso-8859-1",
+            names=["MovieID", "Title", "Genres"],
         )
+
+        movies_df = pl.from_pandas(movies_df)
         
         # Preprocessing (как в features.py)
         movies_df = movies_df.with_columns(
@@ -67,7 +69,7 @@ class ModelService:
         
         # 3. Выбираем колонки в правильном порядке (как в конфиге)
         # CatBoost капризен к порядку, если подавать pd.DataFrame без Pool
-        feature_cols = self.cfg.features.user_cat + self.cfg.features.item_cat + self.cfg.features.item_text
+        feature_cols = self.cfg.features.user_num + self.cfg.features.user_cat + self.cfg.features.item_cat
         
         X = inference_batch.select(feature_cols).to_pandas()
         
