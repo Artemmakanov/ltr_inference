@@ -1,6 +1,7 @@
 
 data/
 models/
+embeddings/
 notebooks/sandbox
 catboost_info/
 

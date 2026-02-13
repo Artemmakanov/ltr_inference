@@ -22,3 +22,4 @@ paths:
   train_data: "data/train.parquet"
   test_data: "data/test.parquet"
   model_output: "models/ranker.cbm"
+  embeddings_output: "embeddings"

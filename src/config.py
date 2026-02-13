@@ -8,6 +8,7 @@ class PathsConfig:
     train_data: str
     test_data: str
     model_output: str
+    embeddings_output: str
 
 @dataclass
 class FeatureConfig:
