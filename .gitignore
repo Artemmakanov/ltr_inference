@@ -2,6 +2,7 @@
 data/
 models/
 notebooks/sandbox
+catboost_info/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
