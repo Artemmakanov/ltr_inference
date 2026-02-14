@@ -2,8 +2,10 @@
 data/
 models/
 embeddings/
-notebooks/sandbox
+sandbox/
 catboost_info/
+qdrant_storage/
+redis_data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

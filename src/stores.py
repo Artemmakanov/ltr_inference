@@ -1,5 +1,6 @@
 import polars as pl
 import pandas as pd
+import redis
 from typing import List, Dict, Any, Protocol
 
 class FeatureStore(Protocol):
@@ -85,3 +86,76 @@ class InMemoryFeatureStore:
 
     def get_title(self, item_id: int) -> str:
         return self.titles_map.get(item_id, "Unknown")
+
+
+class RedisFeatureStore:
+    def __init__(self, host="localhost", port=6379):
+        # decode_responses=True автоматически превращает bytes в str
+        try:
+            self.client = redis.Redis(host=host, port=port, decode_responses=True)
+            self.client.ping() # Проверка соединения при старте
+        except redis.ConnectionError:
+            print(f"❌ WARNING: Could not connect to Redis at {host}:{port}")
+
+    def get_user_features(self, user_id: int) -> Dict[str, Any]:
+        """
+        Возвращает фичи юзера.
+        Если юзера нет (Cold Start), возвращает дефолтный профиль.
+        """
+        key = f"user:{user_id}"
+        features = self.client.hgetall(key)
+        
+        if not features:
+            # Fallback для холодных юзеров (средний профиль)
+            # В реальном проде эти дефолты лучше вынести в конфиг
+            return {
+                "Gender": "M", 
+                "Age": "25", 
+                "Occupation": "0", 
+                "Zip-code": "10001"
+            }
+        
+        return features
+
+    def get_item_features(self, item_ids: List[int]) -> pl.DataFrame:
+        """
+        Батчевая загрузка фичей для списка кандидатов.
+        Использует Redis Pipeline для скорости.
+        """
+        if not item_ids:
+            return pl.DataFrame()
+
+        pipe = self.client.pipeline()
+        for iid in item_ids:
+            pipe.hgetall(f"item:{iid}")
+        
+        # Выполняем одним махом
+        results = pipe.execute()
+        
+        # Собираем данные
+        data = []
+        for iid, props in zip(item_ids, results):
+            if props: # Если айтем найден в Redis
+                props["MovieID"] = iid
+                data.append(props)
+        
+        if not data:
+            return pl.DataFrame()
+
+        # Создаем Polars DataFrame
+        df = pl.DataFrame(data)
+        
+        # Приведение типов (Важно для CatBoost!)
+        # MovieID в Int64, категориальные фичи в String
+        # Если каких-то колонок нет, polars может ругаться, поэтому используем col(...).cast() аккуратно
+        
+        # Жанры точно нужны как строки
+        if "Genres" in df.columns:
+            df = df.with_columns(pl.col("Genres").cast(pl.String).cast(pl.Categorical))
+            
+        return df.with_columns(pl.col("MovieID").cast(pl.Int64))
+
+    def get_title(self, item_id: int) -> str:
+        """Быстрый метод для UI/Demo, чтобы получить название"""
+        title = self.client.hget(f"item:{item_id}", "Title")
+        return title if title else f"Unknown Movie ({item_id})"

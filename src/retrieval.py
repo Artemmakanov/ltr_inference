@@ -1,7 +1,10 @@
 import annoy
 import numpy as np
 import pickle
-from typing import List
+from typing import List, Optional
+from qdrant_client import QdrantClient
+# Импортируем модели для низкоуровневых запросов
+from qdrant_client.http import models as rest_models
 
 class AnnoyRetriever:
     def __init__(self, 
@@ -54,3 +57,103 @@ class AnnoyRetriever:
         candidates = [self.mappings["idx_to_item"][idx] for idx in neighbor_indices]
         
         return candidates
+    
+
+
+class QdrantRetriever:
+    def __init__(self, 
+                 host="localhost", 
+                 port=6333,
+                 collection_name="movies",
+                 user_vectors_path="embeddings/user_vectors.npy",
+                 mappings_path="embeddings/mappings.pkl"):
+        
+        self.collection_name = collection_name
+        
+        # 1. Подключение
+        self.client = QdrantClient(host=host, port=port)
+        
+        # 2. Загрузка векторов ЮЗЕРОВ
+        print(f"⏳ Loading user vectors from {user_vectors_path}...")
+        self.user_vectors = np.load(user_vectors_path)
+        
+        with open(mappings_path, "rb") as f:
+            self.mappings = pickle.load(f)
+            
+        print("✅ QdrantRetriever initialized (Low-Level Mode)")
+
+    def get_candidates(self, user_id: int, k=100) -> List[int]:
+        """
+        Возвращает список Real MovieIDs.
+        """
+        # 1. Получаем индекс юзера
+        u_idx = self.mappings["user_to_idx"].get(user_id)
+        
+        if u_idx is None:
+            print(f"⚠️ User {user_id} not found in embeddings.")
+            return []
+        
+        # 2. Берем вектор (обязательно конвертируем в list для JSON)
+        query_vector = self.user_vectors[u_idx].tolist()
+        
+        # 3. Формируем запрос через модели (это работает в любой версии)
+        search_request = rest_models.SearchRequest(
+            vector=query_vector,
+            limit=k,
+            with_payload=False, # Нам нужны только ID для ранкера
+            score_threshold=0.0
+        )
+        
+        try:
+            # 4. Выполняем запрос через Points API
+            api_result = self.client.http.points_api.search_points(
+                collection_name=self.collection_name,
+                search_points=search_request
+            )
+            
+            # В разных версиях ответ может быть обернут по-разному
+            # Обычно это объект, у которого есть атрибут result
+            hits = api_result.result if hasattr(api_result, 'result') else api_result
+            
+            # Извлекаем ID
+            candidate_ids = [hit.id for hit in hits]
+            return candidate_ids
+            
+        except Exception as e:
+            print(f"❌ Qdrant Search Error: {e}")
+            return []
+
+    def search_by_vector(self, vector: List[float], k=10) -> List[dict]:
+        """
+        Хелпер для отладки: поиск с возвратом названий
+        """
+        search_request = rest_models.SearchRequest(
+            vector=vector,
+            limit=k,
+            with_payload=True
+        )
+        
+        try:
+            api_result = self.client.http.points_api.search_points(
+                collection_name=self.collection_name,
+                search_points=search_request
+            )
+            hits = api_result.result if hasattr(api_result, 'result') else api_result
+            
+            # Извлекаем данные для UI
+            results = []
+            for hit in hits:
+                payload = hit.payload
+                # Payload может быть объектом или dict в зависимости от версии
+                title = payload.get('title') if isinstance(payload, dict) else getattr(payload, 'title', 'Unknown')
+                
+                results.append({
+                    "id": hit.id,
+                    "title": title,
+                    "score": hit.score
+                })
+            return results
+            
+        except Exception as e:
+            print(f"❌ Qdrant Debug Search Error: {e}")
+            return []

@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # --- Feature Store (Redis) ---
+  redis:
+    image: redis:7-alpine  # Официальный легкий образ (~30MB)
+    container_name: recsys_redis
+    ports:
+      - "6379:6379"        # Пробрасываем порт наружу
+    volumes:
+      - redis_data:/data   # Сохраняем данные, чтобы не пропали при рестарте
+    restart: always
+
+  # --- Vector Database (Qdrant) ---
+  qdrant:
+    image: qdrant/qdrant:latest # Официальный образ Qdrant
+    container_name: recsys_qdrant
+    ports:
+      - "6333:6333"        # HTTP API + Dashboard
+      - "6334:6334"        # GRPC API (для быстрого поиска)
+    volumes:
+      - ./qdrant_storage:/qdrant/storage # Данные будут лежать в папке проекта
+    environment:
+      - QDRANT__SERVICE__ENABLE_TLS=false
+    restart: always
+
+# Тома для хранения данных Redis (управляемые Docker)
+volumes:
+  redis_data:
