@@ -46,14 +46,14 @@ class ServiceContainer:
         # 1. Feature Store (Redis)
         logger.info("   ... Connecting to Redis")
         # Добавляем socket_timeout, чтобы не висело вечно!
-        self.features = RedisFeatureStore(host="localhost", port=6379)
+        self.features = RedisFeatureStore()
         # Если RedisFeatureStore делает ping внутри __init__, он может зависнуть там
         
         logger.info("🔥 [2/4] Redis Connected (or skipped)")
 
         # 2. Retrieval (Qdrant)
         logger.info("   ... Connecting to Qdrant")
-        self.retriever = QdrantRetriever(host="localhost", port=6333)
+        self.retriever = QdrantRetriever()
         
         logger.info("🔥 [3/4] Qdrant Connected")
 
@@ -144,6 +144,3 @@ def get_recommendations(request: RecommendRequest):
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    # Запуск сервера
-    uvicorn.run(app, host="0.0.0.0", port=8001)

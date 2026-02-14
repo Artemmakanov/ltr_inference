@@ -1,6 +1,7 @@
 import polars as pl
 import pandas as pd
 import redis
+import os
 from typing import List, Dict, Any, Protocol
 
 class FeatureStore(Protocol):
@@ -89,13 +90,15 @@ class InMemoryFeatureStore:
 
 
 class RedisFeatureStore:
-    def __init__(self, host="localhost", port=6379):
+    def __init__(self):
         # decode_responses=True автоматически превращает bytes в str
+        self.host = os.getenv("REDIS_HOST", "localhost")
+        self.port = int(os.getenv("REDIS_PORT", 6379))
         try:
-            self.client = redis.Redis(host=host, port=port, decode_responses=True)
+            self.client = redis.Redis(host=self.host, port=self.port, decode_responses=True)
             self.client.ping() # Проверка соединения при старте
         except redis.ConnectionError:
-            print(f"❌ WARNING: Could not connect to Redis at {host}:{port}")
+            print(f"❌ WARNING: Could not connect to Redis at {self.host}:{self.port}")
 
     def get_user_features(self, user_id: int) -> Dict[str, Any]:
         """

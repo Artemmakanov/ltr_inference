@@ -1,11 +1,5 @@
 
 # 🎬 Learn-2-rank MovieLens
-
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)
-![CatBoost](https://img.shields.io/badge/CatBoost-Ranker-orange?logo=catboost)
-![ONNX](https://img.shields.io/badge/Inference-ONNX-blueviolet?logo=onnx)
-![Gradio](https://img.shields.io/badge/Demo-Gradio-ff7f50?logo=gradio)
-
 **Учебный проект для изучения Learning-to-Rank (LTR) моделей в рекомендательных системах и оптимизации их инференса.**
 
 ---
@@ -74,7 +68,7 @@ python -m src.train
 
 | Метрика | Значение (Test) | Комментарий |
 | --- | --- | --- |
-| **Hit@5** | ~0.XX | Вероятность нахождения релевантного фильма в топ-5 |
+| **Hit@5** | ~0.21 | Вероятность нахождения релевантного фильма в топ-5 |
 
 **Сравнение скорости инференса (Latency):**
 

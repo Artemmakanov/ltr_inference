@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # Мы описываем только наш сервис
+  recsys-service:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: recsys_app_load
+    environment:
+      - REDIS_HOST=redis
+      - QDRANT_HOST=qdrant
+    ports:
+      - "8000:8001"
+      
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 2G
+    # Он будет использовать сеть из основного файла автоматически
+    depends_on:
+      - redis
+      - qdrant
+
+  locust:
+    image: locustio/locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py
+    command: -f /mnt/locust/locustfile.py --host http://recsys-service:8001

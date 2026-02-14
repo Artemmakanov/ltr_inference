@@ -1,4 +1,5 @@
 import annoy
+import os
 import numpy as np
 import pickle
 from typing import List, Optional
@@ -62,16 +63,16 @@ class AnnoyRetriever:
 
 class QdrantRetriever:
     def __init__(self, 
-                 host="localhost", 
-                 port=6333,
                  collection_name="movies",
                  user_vectors_path="embeddings/user_vectors.npy",
                  mappings_path="embeddings/mappings.pkl"):
         
+        self.host = os.getenv("QDRANT_HOST", "localhost")
+        self.port = int(os.getenv("QDRANT_PORT", 6333))
         self.collection_name = collection_name
         
         # 1. Подключение
-        self.client = QdrantClient(host=host, port=port)
+        self.client = QdrantClient(host=self.host, port=self.port)
         
         # 2. Загрузка векторов ЮЗЕРОВ
         print(f"⏳ Loading user vectors from {user_vectors_path}...")
@@ -104,22 +105,41 @@ class QdrantRetriever:
             score_threshold=0.0
         )
         
+        # try:
+        #     # 4. Выполняем запрос через Points API
+        #     api_result = self.client.http.points_api.search_points(
+        #         collection_name=self.collection_name,
+        #         search_points=search_request
+        #     )
+            
+        #     # В разных версиях ответ может быть обернут по-разному
+        #     # Обычно это объект, у которого есть атрибут result
+        #     hits = api_result.result if hasattr(api_result, 'result') else api_result
+            
+        #     # Извлекаем ID
+        #     candidate_ids = [hit.id for hit in hits]
+        #     return candidate_ids
+            
+        # except Exception as e:
+        #     print(f"❌ Qdrant Search Error: {e}")
+            # return []
+
         try:
-            # 4. Выполняем запрос через Points API
-            api_result = self.client.http.points_api.search_points(
+            # ИСПОЛЬЗУЕМ ОБЫЧНЫЙ ВЫСОКОУРОВНЕВЫЙ API
+            # В Docker у нас свежая либа, это будет работать.
+            search_result = self.client.search(
                 collection_name=self.collection_name,
-                search_points=search_request
+                query_vector=query_vector,
+                limit=k,
+                with_payload=False
             )
             
-            # В разных версиях ответ может быть обернут по-разному
-            # Обычно это объект, у которого есть атрибут result
-            hits = api_result.result if hasattr(api_result, 'result') else api_result
-            
             # Извлекаем ID
-            candidate_ids = [hit.id for hit in hits]
+            candidate_ids = [hit.id for hit in search_result]
             return candidate_ids
             
         except Exception as e:
+            # Логируем реальную ошибку, чтобы видеть детали
             print(f"❌ Qdrant Search Error: {e}")
             return []
 
