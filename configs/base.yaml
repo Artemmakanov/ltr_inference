@@ -15,7 +15,7 @@ catboost:
   learning_rate: 0.1
   depth: 6
   loss_function: "YetiRank" # "YetiRank:max_pairs=100"
-  task_type: "CPU" # Или GPU
+  task_type: "GPU"
   verbose: 100
   
 paths:

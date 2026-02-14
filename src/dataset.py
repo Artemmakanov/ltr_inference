@@ -25,8 +25,19 @@ class LTRDataset:
         # 2. КРИТИЧНО ДЛЯ РАНЖИРОВАНИЯ:
         # Данные должны быть сгруппированы по GroupID (UserID).
         # CatBoost ожидает, что все айтемы одного юзера идут подряд.
-        logger.info("Sorting by UserID (Group ID) for LTR...")
+    
+        # Группы (Query ID) - нужны для YetiRank/QuerySoftmax
+        
+        # Assuming 'df' is your dataframe and 'group_id' is your query column
+        max_group_size = 1023
+
+        df = df.group_by("UserID").head(max_group_size)
+        
         df = df.sort("UserID")
+
+        groups = df["UserID"]   
+
+        logger.info("Sorting by UserID (Group ID) for LTR...")
 
         # 3. Выделяем X (фичи), y (таргет) и группы
         X = df.select(
@@ -36,9 +47,6 @@ class LTRDataset:
         )
         y = df[self.cfg.features.target_col]
         
-        # Группы (Query ID) - нужны для YetiRank/QuerySoftmax
-        groups = df["UserID"]
-
         # 4. Собираем Pool
         logger.info(f"Creating CatBoost Pool with {len(df)} rows...")
         

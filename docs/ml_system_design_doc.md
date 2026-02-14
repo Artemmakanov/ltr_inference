@@ -19,7 +19,7 @@
 
 ### 2.3 Constraints
 
-* **Hardware:** Training – CPU; Inference – CPU (Mac/Docker).
+* **Hardware:** Training – GPU; Inference – CPU (Mac/Docker).
 * **Data:** MovieLens 1M (Static snapshot).
 
 ## 3. Architecture
@@ -89,7 +89,7 @@
 ### 7.1 Offline Quality (Метрики качества)
 
 * **HIT@5:** `` (Доля случаев, когда релевантный фильм попал в топ-5 рекомендаций).
-* **Время обучения (CPU):** `` (CatBoost YetiRank, 1M транзакций, глубина 6, iteration=5000).
+* **Время обучения (GPU):** `` (CatBoost YetiRank, 1M транзакций, глубина 6, iteration=5000).
 
 ### 7.2 Характеристики артефактов
 
@@ -145,6 +145,6 @@
 ### День 3: Оптимизация и Деплой
 
 * [ ] Конвертация модели в ONNX.
-* [ ] Проведение нагрузочного тестирования (Locust).
-* [ ] Подготовка финального отчета в Gradio.
+* [ ] Проведение нагрузочного тестирования (Locust) и оптимизация FAISS/Redis
+
 

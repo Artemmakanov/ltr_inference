@@ -44,7 +44,7 @@ model.fit(
     train_pool,
     eval_set=test_pool,
     plot=False,
-    use_best_model=True
+    use_best_model=False
 )
 
 # 5. Извлечение Hit@5 (RecallAt:top=5)
