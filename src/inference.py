@@ -10,6 +10,7 @@ class ModelService:
         self.model = None
         self._items_features = None  # In-memory Feature Store (Items)
         self._titles_map = None      # ID -> Title
+        self._genres_map = None      # ID -> Genres
         
     def load(self):
         """Загружает модель и метаданные"""
@@ -41,6 +42,7 @@ class ModelService:
         # Сохраняем для быстрого доступа
         self._items_df = movies_df
         self._titles_map = dict(zip(movies_df["MovieID"], movies_df["Title"]))
+        self._genres_map = dict(zip(movies_df["MovieID"], movies_df["Genres"]))
         
     def predict(self, user_features: Dict[str, Any], candidate_ids: List[int]) -> List[Dict]:
         """
@@ -71,7 +73,7 @@ class ModelService:
         # CatBoost капризен к порядку, если подавать pd.DataFrame без Pool
         feature_cols = self.cfg.features.user_num + self.cfg.features.user_cat + self.cfg.features.item_cat
         
-        X = inference_batch.select(feature_cols).to_pandas()
+        X = inference_batch.select(feature_cols).rows()
         
         # 4. Predict
         scores = self.model.predict(X)
@@ -85,7 +87,7 @@ class ModelService:
                 "movie_id": mid,
                 "title": self._titles_map.get(mid, "Unknown"),
                 "score": float(score),
-                "genres": inference_batch.filter(pl.col("MovieID") == mid)["Genres"][0]
+                "genres": self._genres_map.get(mid, "Unknown")
             })
             
         # Сортируем по скору (от большего к меньшему)
