@@ -36,9 +36,7 @@ COPY embeddings/ embeddings/
 COPY models/ models/
 COPY service/ service/
 
-# 6. Настройки рантайма
-ENV OMP_NUM_THREADS=1 \
-    PYTHONUNBUFFERED=1
+ENV OMP_NUM_THREADS=1
 
 # Запуск (порт 8001, как ты хотел)
 CMD ["uvicorn", "service.app:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "4"]

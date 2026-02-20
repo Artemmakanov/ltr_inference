@@ -1,8 +1,9 @@
 import sys
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from loguru import logger
 import time
 
@@ -11,12 +12,11 @@ from src.inference import ModelService
 from src.stores import RedisFeatureStore
 from src.retrieval import QdrantRetriever
 
-# Настройка логгера
+# --- Настройка логгера ---
 logger.remove()
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>")
 
 # --- 1. Data Models (Pydantic) ---
-# Описываем, что входит и что выходит (валидация + документация Swagger)
 
 class RecommendRequest(BaseModel):
     user_id: int
@@ -28,43 +28,45 @@ class MovieResponse(BaseModel):
     score: float
     genres: str
 
+# Добавили модель для детализации таймингов
+class LatencyBreakdown(BaseModel):
+    retrieval_ms: float  # Qdrant
+    features_ms: float   # Redis
+    ranking_ms: float    # CatBoost
+    total_ms: float
+
 class RecommendResponse(BaseModel):
     user_id: int
     candidates_found: int
     recommendations: List[MovieResponse]
-    inference_time_ms: float
+    latency: LatencyBreakdown  # Вставляем сюда нашу детализацию
 
-# --- 2. Global Services (Singleton Pattern) ---
-# Инициализируем один раз при старте, чтобы не пересоздавать соединения
+# --- 2. Global Services ---
 
-app = FastAPI(title="RecSys Movie Ranker", version="1.0.0")
+app = FastAPI(title="RecSys Movie Ranker", version="1.1.0")
 
 class ServiceContainer:
     def __init__(self):
-        logger.info("🔥 [1/4] Initializing Services Container...")
-        
-        # 1. Feature Store (Redis)
-        logger.info("   ... Connecting to Redis")
-        # Добавляем socket_timeout, чтобы не висело вечно!
-        self.features = RedisFeatureStore()
-        # Если RedisFeatureStore делает ping внутри __init__, он может зависнуть там
-        
-        logger.info("🔥 [2/4] Redis Connected (or skipped)")
+        logger.info("🔥 [Init] Loading Services...")
+        try:
+            self.features = RedisFeatureStore()
+            logger.info("   ✅ Redis Connected")
+        except Exception as e:
+            logger.error(f"   ❌ Redis Failed: {e}")
+            raise e
 
-        # 2. Retrieval (Qdrant)
-        logger.info("   ... Connecting to Qdrant")
-        self.retriever = QdrantRetriever()
-        
-        logger.info("🔥 [3/4] Qdrant Connected")
+        try:
+            self.retriever = QdrantRetriever()
+            logger.info("   ✅ Qdrant Connected")
+        except Exception as e:
+            logger.error(f"   ❌ Qdrant Failed: {e}")
+            # Можно не рейзить ошибку, если допустимо работать без Qdrant
+            raise e
 
-        # 3. Ranking Model (CatBoost)
-        logger.info("   ... Loading CatBoost Model")
         self.ranker = ModelService()
-        self.ranker.load() 
-        
-        logger.info("🔥 [4/4] Model Loaded. Service Ready!")
+        self.ranker.load()
+        logger.info("   ✅ CatBoost Loaded")
 
-# Глобальная переменная для сервисов
 services: ServiceContainer = None
 
 @app.on_event("startup")
@@ -74,73 +76,103 @@ def startup_event():
 
 # --- 3. API Endpoints ---
 
-@app.get("/health")
-def health_check():
-    """Проверка, что сервис жив"""
-    return {"status": "ok", "model_loaded": services.ranker.model is not None}
-
 @app.post("/recommend", response_model=RecommendResponse)
-def get_recommendations(request: RecommendRequest):
+def get_recommendations(request: RecommendRequest, response: Response):
     """
-    Главная ручка: Retrieval -> Feature Fetching -> Ranking
+    Pipeline: Retrieval (Qdrant) -> Features (Redis) -> Ranking (CatBoost)
     """
-    logger.info("DEBUG: Request received")  # 1
-    start_time = time.time()
+    t_start = time.time()
     user_id = request.user_id
     
+    # Переменные для таймингов
+    t_retrieval = 0.0
+    t_features = 0.0
+    t_ranking = 0.0
+    
+    candidates_ids = []
+    
+    # --- STEP 1: Retrieval (Qdrant) ---
+    t0 = time.time()
     try:
-        # A. Candidate Generation (Retrieval)
-        # -----------------------------------
-        # Ищем 100 кандидатов в Qdrant
-        logger.info("DEBUG: Calling Qdrant...") # 2
+        # Пытаемся достать кандидатов
         candidate_ids = services.retriever.get_candidates(user_id, k=100)
-        logger.info(f"DEBUG: Qdrant done. Found: {len(candidate_ids)}") # 3
-        
-        # Fallback: Если Qdrant вернул пустоту (Cold User), берем популярное
-        if not candidate_ids:
-            logger.warning(f"User {user_id} is cold (no embeddings). Using Popular fallback.")
-            candidate_ids = services.ranker.get_top_popular(k=100)
-            
-        # B. Feature Fetching (Store)
-        # ---------------------------
-        # Получаем фичи юзера из Redis
-        logger.info("DEBUG: Calling Redis...") # 4
-        user_features = services.features.get_user_features(user_id)
-        logger.info("DEBUG: Redis done") # 5
-        
-        # C. Ranking (Inference)
-        # ----------------------
-        # Сервис сам достанет фичи айтемов и прогонит CatBoost
-        logger.info("DEBUG: Calling CatBoost...") # 6
-        ranked_items = services.ranker.predict(user_features, candidate_ids)
-        logger.info("DEBUG: CatBoost done") # 7
-        # D. Response Formatting
-        # ----------------------
-        # Берем топ-K
-        top_items = ranked_items[:request.top_k]
-        
-        response_list = [
-            MovieResponse(
-                movie_id=item["movie_id"],
-                title=item["title"],
-                score=item["score"],
-                genres=item["genres"]
-            )
-            for item in top_items
-        ]
-        
-        execution_time = (time.time() - start_time) * 1000
-        
-        logger.info(f"Recs for User {user_id}: Found {len(candidate_ids)} candidates, returned {len(top_items)}. Time: {execution_time:.2f}ms")
-        
-        return RecommendResponse(
-            user_id=user_id,
-            candidates_found=len(candidate_ids),
-            recommendations=response_list,
-            inference_time_ms=execution_time
-        )
-
     except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Graceful Degradation: Если Qdrant упал, не крашим сервис, а пишем лог
+        logger.error(f"⚠️ Retrieval Error (Qdrant): {e}. Switching to fallback.")
+        candidate_ids = []
+    
+    t1 = time.time()
+    t_retrieval = (t1 - t0) * 1000
 
+    # Fallback Logic
+    if not candidate_ids:
+        logger.warning(f"User {user_id}: Cold or Qdrant failed. Using Popular.")
+        # Предполагаем, что get_top_popular очень быстрый (из памяти)
+        candidate_ids = services.ranker.get_top_popular(k=100)
+
+    # --- STEP 2: Feature Store (Redis) ---
+    # Это критическая секция. Если нет фичей юзера, мы не можем предсказать.
+    t2_start = time.time()
+    try:
+        user_features = services.features.get_user_features(user_id)
+        
+        # Валидация данных: Проверяем, что фичи реально пришли
+        if user_features is None:
+             raise ValueError(f"Features for user {user_id} not found in Redis")
+             
+    except Exception as e:
+        # Тут мы падаем честно, так как без фичей модель не работает
+        logger.critical(f"❌ Feature Store Error (Redis): {e}")
+        raise HTTPException(status_code=503, detail="Feature Store Unavailable or User Unknown")
+        
+    t2_end = time.time()
+    t_features = (t2_end - t2_start) * 1000
+
+    # --- STEP 3: Ranking (CatBoost) ---
+    t3_start = time.time()
+    try:
+        ranked_items = services.ranker.predict(user_features, candidate_ids)
+    except Exception as e:
+        logger.critical(f"❌ Model Inference Error: {e}")
+        raise HTTPException(status_code=500, detail="Ranking Model Failed")
+        
+    t3_end = time.time()
+    t_ranking = (t3_end - t3_start) * 1000
+
+    # --- Formatting Response ---
+    top_items = ranked_items[:request.top_k]
+    response_list = [
+        MovieResponse(**item) for item in top_items
+    ]
+    
+    t_total = (time.time() - t_start) * 1000
+    
+    # Логируем красивую разбивку
+    logger.info(
+        f"User {user_id} | Total: {int(t_total)}ms | "
+        f"Qdrant: {int(t_retrieval)}ms | "
+        f"Redis: {int(t_features)}ms | "
+        f"Model: {int(t_ranking)}ms"
+    )
+
+    # --- ВАЖНО: Добавляем заголовки для Locust ---
+    # Locust может читать заголовки ответа и строить по ним графики
+    response.headers["X-Latency-Total"] = str(t_total)
+    response.headers["X-Latency-Retrieval"] = str(t_retrieval)
+    response.headers["X-Latency-Features"] = str(t_features)
+    response.headers["X-Latency-Ranking"] = str(t_ranking)
+
+    return RecommendResponse(
+        user_id=user_id,
+        candidates_found=len(candidate_ids),
+        recommendations=response_list,
+        latency=LatencyBreakdown(
+            retrieval_ms=t_retrieval,
+            features_ms=t_features,
+            ranking_ms=t_ranking,
+            total_ms=t_total
+        )
+    )
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=False)
