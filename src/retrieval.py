@@ -69,10 +69,16 @@ class QdrantRetriever:
         
         self.host = os.getenv("QDRANT_HOST", "localhost")
         self.port = int(os.getenv("QDRANT_PORT", 6333))
+        self.grpc_port = int(os.getenv("QDRANT_GRPC_PORT", 6334))
         self.collection_name = collection_name
         
         # 1. Подключение
-        self.client = QdrantClient(host=self.host, port=self.port)
+        self.client = QdrantClient(
+            host=self.host,
+            port=self.port,
+            prefer_grpc=True,
+            timeout=0.1      
+        )
         
         # 2. Загрузка векторов ЮЗЕРОВ
         print(f"⏳ Loading user vectors from {user_vectors_path}...")

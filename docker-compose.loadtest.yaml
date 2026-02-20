@@ -29,4 +29,4 @@ services:
       - "8089:8089"
     volumes:
       - ./:/mnt/locust/
-    command: -f /mnt/locust/locustfile.py --html=/mnt/locust/recsys_service_optimization_2.html --host http://recsys-service:8001 --headless -u 100 -r 2 -t 100s
+    command: -f /mnt/locust/locustfile.py --html=/mnt/locust/qdrant_optimization_2.html --host http://recsys-service:8001 --headless -u 100 -r 2 -t 100s
